@@ -1,0 +1,7 @@
+fastapi
+mangum
+pg8000
+sqlalchemy
+passlib
+pydantic
+email-validator
