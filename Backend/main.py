@@ -247,17 +247,21 @@ def admin_register(new_admin: AdminRegister, db: Session = Depends(get_db)):
     db.commit()
     return {"message": f"Admin '{new_admin.username}' created."}
 
-
 # ==========================================
 # 5. FRONTEND INTEGRATION & MANGUM HANDLER
 # ==========================================
 
 # Serve Vite build production static files if the 'dist' directory exists
 if os.path.exists("dist"):
+    # Mount the static compiled JS/CSS assets
     app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
 
     @app.get("/{catchall:path}")
     async def serve_frontend(catchall: str):
+        # Prevent the frontend router from intercepting backend api requests
+        if catchall.startswith("buyer") or catchall.startswith("admin"):
+            raise HTTPException(status_code=404, detail="API route not found")
+
         file_path = os.path.join("dist", catchall)
         if os.path.isfile(file_path):
             return FileResponse(file_path)
