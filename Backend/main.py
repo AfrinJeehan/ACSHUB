@@ -16,8 +16,6 @@ from mangum import Mangum  # Required to bridge FastAPI and AWS Lambda
 # ==========================================
 # 1. DATABASE CONFIGURATION
 # ==========================================
-# On your local machine, it will fall back to your localhost Postgres.
-# On AWS Lambda, it will read the "DATABASE_URL" environment variable pointing to Neon.tech.
 DATABASE_URL = os.getenv(
     "DATABASE_URL", 
     "postgresql+pg8000://postgres:You6m%40tter@localhost:5432/acshub_db"
@@ -55,8 +53,6 @@ class AdminDB(Base):
     created_at = Column(DateTime, default=func.now())
 
 
-# FIX: Replaced the in-memory dictionary with a Database Session table 
-# so admin logins do not break across multiple transient Lambda instances.
 class AdminSessionDB(Base):
     __tablename__ = "admin_sessions"
 
@@ -95,7 +91,6 @@ seed_default_admin()
 # ==========================================
 app = FastAPI()
 
-# Keep local CORS configuration for development stability
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -110,8 +105,6 @@ def get_current_admin(authorization: str = Header(None), db: Session = Depends(g
         raise HTTPException(status_code=401, detail="Not authenticated. Please log in as admin.")
     
     token = authorization.split(" ", 1)[1]
-    
-    # Query database instead of an in-memory dictionary
     session_record = db.query(AdminSessionDB).filter(AdminSessionDB.token == token).first()
     if not session_record:
         raise HTTPException(status_code=401, detail="Session expired. Please log in again.")
@@ -153,10 +146,10 @@ class AdminRegister(BaseModel):
 
 
 # ==========================================
-# 3. BUYER CRUD APIs
+# 3. BUYER CRUD APIs (Isolated with /api)
 # ==========================================
 
-@app.post("/buyer", status_code=201)
+@app.post("/api/buyer", status_code=201)
 def create_buyer(buyer: BuyerCreate, db: Session = Depends(get_db)):
     existing = db.query(BuyerDB).filter(BuyerDB.email == buyer.email).first()
     if existing:
@@ -169,12 +162,12 @@ def create_buyer(buyer: BuyerCreate, db: Session = Depends(get_db)):
     return db_buyer
 
 
-@app.get("/buyer")
+@app.get("/api/buyer")
 def get_all_buyers(db: Session = Depends(get_db), admin: str = Depends(get_current_admin)):
     return db.query(BuyerDB).order_by(BuyerDB.id.desc()).all()
 
 
-@app.put("/buyer/{buyer_id}")
+@app.put("/api/buyer/{buyer_id}")
 def update_buyer(
     buyer_id: int,
     updates: BuyerUpdate,
@@ -197,7 +190,7 @@ def update_buyer(
     return buyer
 
 
-@app.delete("/buyer/{buyer_id}")
+@app.delete("/api/buyer/{buyer_id}")
 def delete_buyer(buyer_id: int, db: Session = Depends(get_db), admin: str = Depends(get_current_admin)):
     buyer = db.query(BuyerDB).filter(BuyerDB.id == buyer_id).first()
     if not buyer:
@@ -208,10 +201,10 @@ def delete_buyer(buyer_id: int, db: Session = Depends(get_db), admin: str = Depe
 
 
 # ==========================================
-# 4. ADMIN AUTH APIs
+# 4. ADMIN AUTH APIs (Isolated with /api)
 # ==========================================
 
-@app.post("/admin/login")
+@app.post("/api/admin/login")
 def admin_login(credentials: AdminLogin, db: Session = Depends(get_db)):
     admin = db.query(AdminDB).filter(AdminDB.username == credentials.username).first()
     if not admin or not pwd_context.verify(credentials.password, admin.password_hash):
@@ -219,7 +212,6 @@ def admin_login(credentials: AdminLogin, db: Session = Depends(get_db)):
 
     token = secrets.token_hex(16)
     
-    # Save session token to DB
     new_session = AdminSessionDB(token=token, username=admin.username)
     db.add(new_session)
     db.commit()
@@ -227,17 +219,16 @@ def admin_login(credentials: AdminLogin, db: Session = Depends(get_db)):
     return {"token": token, "username": admin.username}
 
 
-@app.post("/admin/logout")
+@app.post("/api/admin/logout")
 def admin_logout(db: Session = Depends(get_db), authorization: str = Header(None)):
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ", 1)[1]
-        # Remove session token from DB
         db.query(AdminSessionDB).filter(AdminSessionDB.token == token).delete()
         db.commit()
     return {"message": "Logged out."}
 
 
-@app.post("/admin/register", status_code=201)
+@app.post("/api/admin/register", status_code=201)
 def admin_register(new_admin: AdminRegister, db: Session = Depends(get_db)):
     existing = db.query(AdminDB).filter(AdminDB.username == new_admin.username).first()
     if existing:
@@ -247,20 +238,20 @@ def admin_register(new_admin: AdminRegister, db: Session = Depends(get_db)):
     db.commit()
     return {"message": f"Admin '{new_admin.username}' created."}
 
+
 # ==========================================
 # 5. FRONTEND INTEGRATION & MANGUM HANDLER
 # ==========================================
 
 # Serve Vite build production static files if the 'dist' directory exists
 if os.path.exists("dist"):
-    # Mount the static compiled JS/CSS assets
     app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
 
     @app.get("/{catchall:path}")
     async def serve_frontend(catchall: str):
-        # Prevent the frontend router from intercepting backend api requests
-        if catchall.startswith("buyer") or catchall.startswith("admin"):
-            raise HTTPException(status_code=404, detail="API route not found")
+        # Explicitly ignore API calls from frontend file tracking
+        if catchall.startswith("api"):
+            raise HTTPException(status_code=404, detail="API Endpoint Not Found")
 
         file_path = os.path.join("dist", catchall)
         if os.path.isfile(file_path):
