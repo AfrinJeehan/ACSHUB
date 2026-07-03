@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // One place to change if your backend ever runs on a different port/host.
-export const API_BASE_URL = "http://localhost:8000";
+export const API_BASE_URL = "https://e2c5tfolhldyyx2obvur6xjfje0bbdhs.lambda-url.eu-north-1.on.aws/buyer-onboarding";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
