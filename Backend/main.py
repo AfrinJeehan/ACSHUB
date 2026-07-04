@@ -89,16 +89,16 @@ seed_default_admin()
 # ==========================================
 # 2. FASTAPI CONFIGURATION & ROUTING
 # ==========================================
-app = FastAPI()
+app = FastAPI(title="ACSHUB Local Platform")
 
+# Update CORS to allow requests from your frontend development server (usually port 5173 for Vite)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 def get_current_admin(authorization: str = Header(None), db: Session = Depends(get_db)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -260,3 +260,17 @@ if os.path.exists("dist"):
 
 # The wrapper object that intercepts AWS Lambda invocations 
 handler = Mangum(app)
+
+
+if os.path.exists("dist"):
+    app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+
+    @app.get("/{catchall:path}")
+    async def serve_frontend(catchall: str):
+        if catchall.startswith("api"):
+            raise HTTPException(status_code=404, detail="API Endpoint Not Found")
+        
+        file_path = os.path.join("dist", catchall)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse("dist/index.html")
