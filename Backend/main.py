@@ -90,6 +90,7 @@ seed_default_admin()
 # 2. FASTAPI CONFIGURATION & ROUTING
 # ==========================================
 app = FastAPI(title="ACSHUB Local Platform")
+root_path="/prod"
 
 # Update CORS to allow requests from your frontend development server (usually port 5173 for Vite)
 app.add_middleware(
